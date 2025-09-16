@@ -1,0 +1,12 @@
+# STM32CubeIDE / Eclipse
+.metadata/
+.settings/
+*.launch
+
+# Build output
+Debug/
+Release/
+
+# OS files
+*.swp
+*.DS_Store

@@ -28,4 +28,16 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>CMSIS_System</name>
+			<type>2</type>
+			<location>/home/tarun/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.3/Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates</location>
+		</link>
+		<link>
+			<name>HAL_Src</name>
+			<type>2</type>
+			<location>/home/tarun/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.3/Drivers/STM32F4xx_HAL_Driver/Src</location>
+		</link>
+	</linkedResources>
 </projectDescription>

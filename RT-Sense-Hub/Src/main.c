@@ -17,25 +17,72 @@
  */
 
 #include "stm32f4xx_hal.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 static void SystemClock_Config(void);
 static void GPIO_Init(void);
+static void Init_unit(void);
+
+/* Dimensions of the buffer that the task being created will use as its stack.
+   NOTE: This is the number of words the stack will hold, not the number of
+   bytes. For example, if each stack item is 32-bits, and this is set to 100,
+   then 400 bytes (100 * 32-bits) will be allocated. */
+#define STACK_SIZE 200
+
+/* Structure that will hold the TCB of the task being created. */
+StaticTask_t xTaskBuffer;
+/* Buffer that the task being created will use as its stack. Note this is
+   an array of StackType_t variables. The size of StackType_t is dependent on
+   the RTOS port. */
+StackType_t xStack[STACK_SIZE];
+
+void sensorTask(void *arg)
+{
+	while (1)
+	{
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		vTaskDelay(pdMS_TO_TICKS(500));
+	}
+}
 
 int main(void)
 {
-    /* Initialize HAL */
-    HAL_Init();
+	Init_unit();
 
-    /* Configure system clock */
-    SystemClock_Config();
+	xTaskCreate(
+			sensorTask,		  			// Function that implements the task
+			"sensor_task",    			// Text name for the task
+			configMINIMAL_STACK_SIZE,   // Stack depth in words
+			NULL,             			// Parameter passed to the task
+			1,                			// Priority at which the task is created
+			NULL              			// Used to pass back a handle by which the task can be referenced
+		);
 
-    /* Initialize GPIO */
-    GPIO_Init();
+	vTaskStartScheduler();
 
-    while (1)
+	while(1);
+}
+
+static void Init_unit(void)
+{
+	/* Initialize HAL */
+	HAL_Init();
+
+	/* Configure system clock */
+	SystemClock_Config();
+
+	/* Initialize GPIO */
+	GPIO_Init();
+}
+
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
+
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
     {
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-        HAL_Delay(500);
+        xPortSysTickHandler();
     }
 }
 

@@ -19,10 +19,23 @@
 #include "stm32f4xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include <stdio.h>
 
 static void SystemClock_Config(void);
 static void GPIO_Init(void);
 static void Init_unit(void);
+static void UART_Init(void);
+static void Error_Handler(void);
+#ifdef __GNUC__
+  /* With GCC, small printf (option LD Linker->Libraries->Small printf
+     set to 'Yes') calls __io_putchar() */
+  #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+  #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+
+/* UART handler declaration */
+UART_HandleTypeDef UartHandle;
 
 /* Dimensions of the buffer that the task being created will use as its stack.
    NOTE: This is the number of words the stack will hold, not the number of
@@ -42,6 +55,7 @@ void sensorTask(void *arg)
 	while (1)
 	{
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		printf("Hello, World!\r\n");
 		vTaskDelay(pdMS_TO_TICKS(500));
 	}
 }
@@ -74,28 +88,87 @@ static void Init_unit(void)
 
 	/* Initialize GPIO */
 	GPIO_Init();
+
+	/* Initialize GPIO */
+	UART_Init();
 }
 
 void SysTick_Handler(void)
 {
     HAL_IncTick();
+	xPortSysTickHandler();
+}
 
-    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+static void UART_Init(void)
+{
+    /*##-1- Configure the UART peripheral ######################################*/
+    /* Put the USART peripheral in the Asynchronous mode (UART Mode) */
+    /* UART1 configured as follows:
+      - Word Length = 7 Bits
+      - Stop Bit = One Stop bit
+      - Parity = ODD parity
+      - BaudRate = 9600 baud
+      - Hardware flow control disabled (RTS and CTS signals) */
+    UartHandle.Instance          = USART2;
+
+    UartHandle.Init.BaudRate     = 9600;
+    UartHandle.Init.WordLength   = UART_WORDLENGTH_8B;
+    UartHandle.Init.StopBits     = UART_STOPBITS_1;
+    UartHandle.Init.Parity       = UART_PARITY_NONE;
+    UartHandle.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
+    UartHandle.Init.Mode         = UART_MODE_TX_RX;
+    UartHandle.Init.OverSampling = UART_OVERSAMPLING_16;
+
+    HAL_StatusTypeDef ret = HAL_UART_Init(&UartHandle);
+
+    if (ret != HAL_OK)
     {
-        xPortSysTickHandler();
+        while (1)
+        {
+            HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+            HAL_Delay(100);
+        }
     }
+}
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+PUTCHAR_PROTOTYPE
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the EVAL_COM1 and Loop until the end of transmission */
+  HAL_UART_Transmit(&UartHandle, (uint8_t *)&ch, 1, 0xFFFF);
+
+  return ch;
 }
 
 static void GPIO_Init(void)
 {
     __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_USART2_CLK_ENABLE();
 
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    /* LED */
     GPIO_InitStruct.Pin = GPIO_PIN_5;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* Reset struct */
+    memset(&GPIO_InitStruct, 0, sizeof(GPIO_InitStruct));
+
+    /* UART */
+    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
 
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 }
@@ -105,7 +178,7 @@ static void SystemClock_Config(void)
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-    /* Configure internal oscillator (HSI) */
+    /* HSI ON */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
     RCC_OscInitStruct.HSIState = RCC_HSI_ON;
     RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -116,20 +189,37 @@ static void SystemClock_Config(void)
         while (1);
     }
 
-    /* Configure clocks */
+    /* SYSCLK = HSI = 16 MHz */
     RCC_ClkInitStruct.ClockType =
-        RCC_CLOCKTYPE_HCLK |
-        RCC_CLOCKTYPE_SYSCLK |
-        RCC_CLOCKTYPE_PCLK1 |
-        RCC_CLOCKTYPE_PCLK2;
+            RCC_CLOCKTYPE_SYSCLK |
+            RCC_CLOCKTYPE_HCLK |
+            RCC_CLOCKTYPE_PCLK1 |
+            RCC_CLOCKTYPE_PCLK2;
 
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct,
+                             FLASH_LATENCY_0) != HAL_OK)
     {
         while (1);
     }
 }
+
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @param  None
+  * @retval None
+  */
+static void Error_Handler(void)
+{
+  /* Turn LED2 on */
+//  BSP_LED_On(LED2);
+  while(1)
+  {
+  }
+}
+
